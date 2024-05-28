@@ -28,7 +28,7 @@ def clear_csv_file(filename):
 
 
 def scrap_temp_humidity_wind(year):
-    for n in range(1, 4):
+    for n in range(1, 13):
         # URL strony z historią pogody dla Wrocławia w danym miesiącu i roku
         url_main = 'https://www.wunderground.com/history/monthly/pl/wroc%C5%82aw/EPWR/date/' + year + '-'
         url = url_main + str(n)
