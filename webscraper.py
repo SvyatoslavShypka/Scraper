@@ -1,53 +1,76 @@
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 
-# URL of the weather history page for Wrocław for January 2022
-# it does not work properly. Need to use tool which runs JavaScript code and only after that downloads webpage code
-url = 'https://www.wunderground.com/history/monthly/pl/wroc%C5%82aw/EPWR/date/2022-1'
 
-# Send a GET request to the webpage
-response = requests.get(url)
+def get_dates_from_url(url):
+    parts = url.split('/')  # Rozbijamy URL na części
+    year_month_str = parts[-1]  # Ostatnia część to rok i miesiąc
+    year, month = map(int, year_month_str.split('-'))  # Dzielimy na rok i miesiąc
+    num_days = pd.Timestamp(year, month, 1).days_in_month  # Obliczamy liczbę dni w miesiącu
+    return [f'{year}{str(month).zfill(2)}{str(day).zfill(2)}' for day in range(1, num_days + 1)]  # Generujemy listę dat w odpowiednim formacie
 
-# Check if the request was successful
-if response.status_code == 200:
-    # Parse the webpage content
-    soup = BeautifulSoup(response.content, 'html.parser')
 
-    # Initialize lists to hold dates and average temperatures
-    dates = []
-    avg_temps = []
+if __name__ == '__main__':
+    # URL strony z historią pogody dla Wrocławia w styczniu 2022 roku
+    url = 'https://www.wunderground.com/history/monthly/pl/wroc%C5%82aw/EPWR/date/2022-1'
+    dates = get_dates_from_url(url)
 
-    # Find the table that contains the average temperature data
-    table = soup.find('table', {'class': 'days ng-star-inserted'})
+    # Ustawienie WebDrivera Selenium (załóżmy, że ChromeDriver znajduje się w ścieżce)
+    service = Service("C:\\Install\\chromedriver-win64\\chromedriver-win64\\chromedriver.exe")  # Zaktualizuj tę ścieżkę do położenia ChromeDrivera
+    driver = webdriver.Chrome(service=service)
+    # Pobierz daty z linku URL
 
-    if table:
-        # Extract all rows from the table
-        rows = table.find_all('tr')
+    try:
+        # Otwórz stronę
+        driver.get(url)
 
-        # Iterate over the rows to find the cells with temperature data
-        for row in rows:
-            cells = row.find_all('td', class_='ng-star-inserted')
-            if len(cells) >= 1:  # Check if the row has the correct number of cells
-                # Extract date and temperature
-                date_cell = row.find('tr').get_text(strip=True)  # Date is usually in the <th> tag
-                avg_temp = cells[0].get_text(strip=True)  # Adjust the index based on the cell position
+        # Poczekaj, aż tabela się załaduje
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'table.days.ng-star-inserted'))
+        )
 
-                # Append the data to lists
-                dates.append(date_cell)
-                avg_temps.append(avg_temp)
 
-        # Create a DataFrame from the data
-        data = pd.DataFrame({
-            'Date': dates,
-            'Avg Temperature': avg_temps
-        })
+        # Wykonaj skrypt JavaScript do pobrania danych z tabeli
+        table_data = driver.execute_script("""
+            let rows = document.querySelectorAll('table.days.ng-star-inserted tbody tr');
+            let data = [];
+            rows.forEach(row => {
+                let dateTable = row.querySelector('td:nth-child(1) table');
+                let tempTable = row.querySelector('td:nth-child(2) table');
+                let humidityTable = row.querySelector('td:nth-child(3) table'); // Załóżmy, że wilgotność jest w 3. kolumnie
+                let windTable = row.querySelector('td:nth-child(4) table'); // Załóżmy, że prędkość wiatru jest w 4. kolumnie
 
-        # Save DataFrame to CSV
-        data.to_csv('avg_temperatures.csv', index=False)
+                if (dateTable && tempTable && humidityTable && windTable) {
+                    let dateCells = dateTable.querySelectorAll('tr');
+                    let tempCells = tempTable.querySelectorAll('tr');
+                    let humidityCells = humidityTable.querySelectorAll('tr');
+                    let windCells = windTable.querySelectorAll('tr');
 
-        print('Data has been saved to avg_temperatures.csv')
-    else:
-        print('Could not find the table with average temperature data.')
-else:
-    print(f'Failed to retrieve the page. Status code: {response.status_code}')
+                    dateCells.forEach((dateCell, index) => {
+                        let dateText = dateCell.querySelector('td').innerText.trim();
+                        let avgTempText = tempCells[index].querySelectorAll('td')[1].innerText.trim(); // Dostosowane do kolumny 'Avg'
+                        let avgHumidityText = humidityCells[index].querySelectorAll('td')[1].innerText.trim(); // Dostosowane do kolumny 'Avg'
+                        let avgWindText = windCells[index].querySelectorAll('td')[1].innerText.trim(); // Dostosowane do kolumny 'Avg'
+                        data.push([dateText, avgTempText, avgHumidityText, avgWindText]);
+                    });
+                }
+            });
+            return data;
+        """)
+
+        # Utwórz DataFrame na podstawie danych
+        if table_data:
+            df = pd.DataFrame(table_data, columns=['Date', 'Avg Temperature', 'Avg Humidity', 'Avg Wind Speed'])
+        else:
+            df = pd.DataFrame(columns=['Date', 'Avg Temperature', 'Avg Humidity', 'Avg Wind Speed'])
+
+        # Zapisz DataFrame do pliku CSV
+        df.to_csv('202201.csv', index=False)
+
+        print('Dane zostały zapisane do 202201.csv')
+    finally:
+        driver.quit()
