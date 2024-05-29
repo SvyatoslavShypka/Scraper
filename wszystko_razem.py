@@ -2,7 +2,6 @@ import pandas as pd
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-
     # Wczytaj dane z plików CSV
     thw_data = pd.read_csv('thw_2023.csv')
     rain_data = pd.read_csv('rain.csv')
@@ -17,6 +16,11 @@ if __name__ == '__main__':
     rain_data.rename(columns={'date': 'Date'}, inplace=True)
     rentals_data.rename(columns={'Data wynajmu': 'Date'}, inplace=True)
 
+    # Wybierz tylko wymagane kolumny z plików thw_data i rain_data
+    thw_data = thw_data[['Date', 'Avg Temperature', 'Avg Humidity', 'Avg Wind Speed']]
+    rain_data = rain_data[['Date', 'prcp']]
+    rentals_data = rentals_data[['Date', 'Ilość wynajmów', 'Czas trwania']]
+
     # Scal dane po kolumnie 'Date'
     merged_data = pd.merge(thw_data, rain_data, on='Date', how='left')
     merged_data = pd.merge(merged_data, rentals_data, on='Date', how='left')
@@ -24,7 +28,12 @@ if __name__ == '__main__':
     # Wypełnij brakujące wartości (opcjonalnie, w zależności od potrzeb)
     merged_data.fillna(0, inplace=True)
 
+    # Wybierz tylko końcowe wymagane kolumny
+    final_columns = ['Date', 'Avg Temperature', 'Avg Humidity', 'Avg Wind Speed', 'prcp', 'Ilość wynajmów',
+                     'Czas trwania']
+    final_data = merged_data[final_columns]
+
     # Zapisz wynikowy plik CSV
-    merged_data.to_csv('merged_data.csv', index=False)
+    final_data.to_csv('merged_data.csv', index=False)
 
     print('Dane zostały połączone i zapisane do pliku merged_data.csv')
